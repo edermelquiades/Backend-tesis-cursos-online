@@ -29,4 +29,6 @@ api.post(
   [md_auth.ensureAuth],
   UserController.registerAdmin
 );
+
+api.put("/activar-verificar-usuario", UserController.verificarActivarUsuario);
 module.exports = api;

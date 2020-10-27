@@ -3,6 +3,9 @@ const path = require("path");
 const bcrypt = require("bcrypt-nodejs");
 const jwt = require("../services/jwt");
 const User = require("../models/user");
+const nodemailer = require("nodemailer");
+const chalk = require("chalk");
+const URL_CLIENT = "http://localhost:3000";
 
 function register(req, resp) {
   const user = new User();
@@ -140,29 +143,92 @@ function login(req, resp) {
 
 function getUsers(req, res) {
   // const { role } = req.body;
-  let role = req.query;
-  console.log(req.query);
+  const page = 1;
 
-  User.find(req.query).then((users) => {
-    if (!users) {
-      res.status(404).send({ message: "No se ha encontrado ningun usuario" });
+  const limit = 1;
+
+  // User.find(req.query).then((users) => {
+  //   if (!users) {
+  //     res.status(404).send({ message: "No se ha encontrado ningun usuario" });
+  //   } else {
+  //     res.status(200).send({ users });
+  //   }
+  // });
+  User.find(req.query.role, (err, Stored) => {
+    if (err) {
+      res.status(500).send({ message: "Error de servidor" });
+      //
     } else {
-      res.status(200).send({ users });
+      if (!Stored) {
+        resp.status(200).send({
+          code: 404,
+          message: "El usuario aun no se encuentra activo",
+        });
+      } else {
+        res.status(200).send({ Stored });
+      }
     }
-  });
+  })
+    .limit(limit)
+    .skip(page)
+    .sort("desc");
 }
 
 function getUsersActive(req, res) {
   // const { role } = req.body;
-  let query = req.query;
 
-  User.find({ active: query.active, role: query.role }).then((users) => {
-    if (!users) {
-      res.status(404).send({ message: "No se ha encontrado ningun usuario" });
-    } else {
-      res.status(200).send({ users });
+  // const limit = parseInt(req.query.limit); // Asegúrate de parsear el límite a número
+  // const skip = parseInt(req.query.skip);// Asegúrate de parsear el salto a número
+  const { page = 1, limit = 10 } = req.query;
+  let query = req.query;
+  const options = {
+    page,
+    limit: parseInt(limit),
+    sort: { date: "desc" },
+  };
+  User.paginate(
+    { active: query.active, role: query.role },
+    options,
+    (err, userStored) => {
+      if (err) {
+        res.status(500).send({ message: "Error del servidor." });
+      } else {
+        if (!userStored) {
+          res.status(404).send({ message: "No se ha encontrado ningun post." });
+        } else {
+          res.status(200).send({ user: userStored });
+        }
+      }
     }
-  });
+  );
+
+  // console.log(query)
+  // User.find({ active: query.active, role: query.role }, (err, Stored) => {
+
+  //   if (err) {
+  //     res.status(500).send({ message: "Error de servidor" });
+  //   } else {
+  //     if (!Stored) {
+  //       resp.status(200).send({
+  //         code: 404,
+  //         message: "El usuario aun no se encuentra activo",
+  //       });
+  //     } else {
+  //       res.status(200).send({ Stored });
+  //     }
+  //   }
+  // })
+  // .skip(skip) // Siempre aplicar "salto" antes de "límite
+  // .limit(limit)
+  // .sort("desc")
+
+  // User.find({ active: query.active, role: query.role }).then((users) => {
+  //   if (!users) {
+  //     res.status(404).send({ message: "No se ha encontrado ningun usuario" });
+  //   } else {
+  //     res.status(200).send({ users });
+  //   }
+  // })
 }
 function uploadAvatar(req, res) {
   const params = req.params;
@@ -307,17 +373,10 @@ function deleteUser(req, res) {
 function registerAdmin(req, res) {
   const user = new User();
 
-  const {
-    email,
-    password,
-    name,
-    lastname,
-    birthday,
-    role,
-  } = req.body;
+  const { email, password, name, lastname, birthday, role } = req.body;
 
   user.active = false;
- 
+
   if (!email || email === "") {
     res.status(404).send({ message: "email no definido, procura definirlo" });
     return null;
@@ -365,40 +424,141 @@ function registerAdmin(req, res) {
     } else {
       user.birthday = birthday;
     }
-  }if (!role || role === "") {
+  }
+  if (!role || role === "") {
     res.status(404).send({ message: "rol no definido, procura definirlo" });
     return null;
   } else {
     user.role = role;
   }
-  
+
   if (!password) {
     res.status(404).send({ message: "las contraseñas son obligatoria" });
-  } else  {
-      bcrypt.hash(password, null, null, function (err, hash) {
-        if (err) {
-          res.status(500).send({ message: "error al ecriptar la contraseña" });
-        } else {
-          user.password = hash;
-          (user.registerDate = new Date().toISOString()), (user.active = false);
+  } else {
+    bcrypt.hash(password, null, null, function (err, hash) {
+      if (err) {
+        res.status(500).send({ message: "error al ecriptar la contraseña" });
+      } else {
+        user.password = hash;
+        (user.registerDate = new Date().toISOString()), (user.active = false);
 
-          user.save((err, userStored) => {
-            if (err) {
-              res.status(500).send({ message: "Usuario ya existe" });
+        user.save((err, userStored) => {
+          if (err) {
+            res.status(500).send({ message: "Usuario ya existe" });
+          } else {
+            if (!userStored) {
+              res.status(404).send({ message: "Error al crear el usuario" });
             } else {
-              if (!userStored) {
-                res.status(404).send({ message: "Error al crear el usuario" });
-              } else {
-                res.status(200).send({ message: "Usuario creado correctamente" });
-              }
+              const token = jwt.createAccessTokenActiveEmail(userStored);
+
+              const html = `Para activar la cuenta haz click sobre esto : <a href="${URL_CLIENT}/active/${token}">Click aqui</a>  `;
+              const transport = nodemailer.createTransport({
+                host: "smtp.gmail.com",
+                port: 465,
+                secure: true,
+                auth: {
+                  user: "faciiuleam2020@gmail.com",
+                  pass: "tjflklmeshapgdbz",
+                },
+              });
+
+              transport
+                .verify()
+                .then(() => {
+                  console.log(
+                    "==============================NODEMAILER CONFIG=============================="
+                  );
+                  console.log(`STATUS: ${chalk.greenBright("ONLINE")}`);
+                  console.log(`STATUS: ${chalk.greenBright("MAILER CONNECT")}`);
+                })
+                .catch((error) => {
+                  console.log(
+                    "==============================NODEMAILER CONFIG=============================="
+                  );
+                  console.log(`STATUS: ${chalk.greenBright("OFFILE")}`);
+                  console.log(`STATUS: ${chalk.redBright(error)}`);
+                });
+
+              transport.sendMail({
+                from: '"🛍️ Facci Cursos" <faciiuleam2020@gmail.com>',
+                to: userStored.email,
+                subject: "activa tu usuario ",
+                text: " activa tu usuario",
+                html,
+              });
+              res.status(200).send({
+                message: `Usuario creado correctamente se a enviado un email al correo ${userStored.email} para su activacion`,
+              });
             }
-          });
-        }
-      });
-    }
+          }
+        });
+      }
+    });
+  }
+}
+
+async function verificarActivarUsuario(req, res) {
+  const token = req.body.token;
+  let pass = req.body.password;
+  const check = jwt.verifyToken(token);
+
+  const { email } = check;
+  if (pass) {
+    await bcrypt.hash(pass, null, null, (err, hash) => {
+      if (err) {
+        res.status(500).send({ message: "Error al encriptar la contraseña" });
+      } else {
+        pass = hash;
+      }
+    });
   }
 
+  if (check === "invalido") {
+    res.status(404).send({ message: "El token es invalido" });
+  } else {
+    User.findOne({ email }, (error, data) => {
+      const active = true;
 
+      if (data.email !== email) {
+        res.status(404).send({ message: "el token no pertenece a sus datos" });
+      } else {
+        if (!data) {
+          res
+            .status(404)
+            .send({ message: "No  se ha encontrado ningun usuario" });
+        } else {
+          const password = pass;
+          User.findByIdAndUpdate(
+            data._id,
+            { active, password },
+            (err, useStored) => {
+              if (err) {
+                res.status(500).send({ message: "Error del servidor" });
+              } else {
+                if (!useStored) {
+                  res
+                    .status(404)
+                    .send({ message: "No se ha encontrado el usuario" });
+                } else {
+                  if (active === true) {
+                    res
+                      .status(200)
+                      .send({ message: "Usuario activado correctamente" });
+                  } else {
+                    res
+                      .status(200)
+                      .send({ message: "Usuario desactivado correctamente" });
+                  }
+                }
+              }
+            }
+          );
+        }
+      }
+    });
+    // res.status(404).send({ message: "El token es valido" });
+  }
+}
 module.exports = {
   register,
   login,
@@ -410,4 +570,5 @@ module.exports = {
   activateUser,
   deleteUser,
   registerAdmin,
+  verificarActivarUsuario,
 };

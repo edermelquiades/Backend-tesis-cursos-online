@@ -4,6 +4,7 @@ const app = require("./app");
 const port = process.env.PORT || 2002;
 const portDb = 20017;
 const { API_VERSION } = require("./config");
+const nodemailer = require("nodemailer");
 
 mongoose.set("useFindAndModify", false);
 
@@ -26,3 +27,4 @@ mongoose.connect(
     }
   }
 );
+
