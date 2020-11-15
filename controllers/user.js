@@ -4,6 +4,7 @@ const bcrypt = require("bcrypt-nodejs");
 const jwt = require("../services/jwt");
 const User = require("../models/user");
 const nodemailer = require("nodemailer");
+const moment = require("moment");
 const chalk = require("chalk");
 const URL_CLIENT = "http://localhost:3000";
 
@@ -559,6 +560,197 @@ async function verificarActivarUsuario(req, res) {
     // res.status(404).send({ message: "El token es valido" });
   }
 }
+
+function inquietudes(req, res) {
+  const { email, subject, text } = req.body; // const html = `Para activar la cuenta haz click sobre esto : <a href="${URL_CLIENT}/active/${token}">Click aqui</a>  `;
+  const transport = nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true,
+    auth: {
+      user: "faciiuleam2020@gmail.com",
+      pass: "tjflklmeshapgdbz",
+    },
+  });
+  console.log(email);
+  transport
+    .verify()
+    .then(() => {
+      console.log(
+        "==============================NODEMAILER CONFIG=============================="
+      );
+      console.log(`STATUS: ${chalk.greenBright("ONLINE")}`);
+      console.log(`STATUS: ${chalk.greenBright("MAILER CONNECT")}`);
+    })
+    .catch((error) => {
+      console.log(
+        "==============================NODEMAILER CONFIG=============================="
+      );
+      console.log(`STATUS: ${chalk.greenBright("OFFILE")}`);
+      console.log(`STATUS: ${chalk.redBright(error)}`);
+    });
+
+  transport.sendMail({
+    from: " <faciiuleam2020@gmail.com>",
+    to: "faciiuleam2020@gmail.com",
+    subject: subject,
+    html: `el email ${email} emite el siguiente mensaje: 
+    <br/>
+    <br/>
+    <br/>
+     ${text} 
+     <br/>
+     <br/>
+     <br/>
+     <b> es hora de responder da click en el siguiente email ${email}</b> `,
+  });
+  res.status(200).send({
+    message: `${email} su correo fue enviado correctamente`,
+  });
+}
+function registerEstudiante(req, res) {
+  const user = new User();
+
+  const { email, password, name, lastname, birthday, role } = req.body;
+
+  user.active = false;
+
+  if (!email || email === "") {
+    res.status(404).send({ message: "email no definido, procura definirlo" });
+    return null;
+  } else {
+    user.email = email.toLowerCase();
+  }
+  if (!name || name === "") {
+    res.status(404).send({ message: "nombre no definido, procura definirlo" });
+    return null;
+  } else {
+    user.name = name;
+  }
+  if (!lastname || lastname === "") {
+    res
+      .status(404)
+      .send({ message: "apellido no definido, procura definirlo" });
+    return null;
+  } else {
+    user.lastname = lastname;
+  }
+  if (!birthday || birthday === "") {
+    res
+      .status(404)
+      .send({ message: "fecha de nacimieno no definido, procura definirlo" });
+    return null;
+  } else {
+    var fechaNace = new Date(birthday);
+    var fechaActual = new Date();
+
+    var mes = fechaActual.getMonth();
+    var dia = fechaActual.getDate();
+    var año = fechaActual.getFullYear();
+
+    fechaActual.setDate(dia);
+    fechaActual.setMonth(mes);
+    fechaActual.setFullYear(año);
+
+    edad = Math.floor((fechaActual - fechaNace) / (1000 * 60 * 60 * 24) / 365);
+
+    if (edad < 18) {
+      res
+        .status(404)
+        .send({ message: "eres menor de edad no puedes registrarte" });
+      return null;
+    } else {
+      user.birthday = birthday;
+    }
+  }
+  if (!role || role === "") {
+    res.status(404).send({ message: "rol no definido, procura definirlo" });
+    return null;
+  } else {
+    user.role = role;
+  }
+
+  if (!password) {
+    res.status(404).send({ message: "las contraseñas son obligatoria" });
+  } else {
+    bcrypt.hash(password, null, null, function (err, hash) {
+      if (err) {
+        res.status(500).send({ message: "error al ecriptar la contraseña" });
+      } else {
+        user.password = hash;
+        (user.registerDate = new Date().toISOString()), (user.active = false);
+
+        user.save((err, userStored) => {
+          if (err) {
+            res.status(500).send({ message: "Usuario ya existe" });
+          } else {
+            if (!userStored) {
+              res.status(404).send({ message: "Error al crear el usuario" });
+            } else {
+              const token = jwt.createAccessTokenActiveEmail(userStored);
+
+              const html = `Para activar la cuenta haz click sobre esto : <a href="${URL_CLIENT}/active/${token}">Click aqui</a>  `;
+              const transport = nodemailer.createTransport({
+                host: "smtp.gmail.com",
+                port: 465,
+                secure: true,
+                auth: {
+                  user: "faciiuleam2020@gmail.com",
+                  pass: "tjflklmeshapgdbz",
+                },
+              });
+
+              transport
+                .verify()
+                .then(() => {
+                  console.log(
+                    "==============================NODEMAILER CONFIG=============================="
+                  );
+                  console.log(`STATUS: ${chalk.greenBright("ONLINE")}`);
+                  console.log(`STATUS: ${chalk.greenBright("MAILER CONNECT")}`);
+                })
+                .catch((error) => {
+                  console.log(
+                    "==============================NODEMAILER CONFIG=============================="
+                  );
+                  console.log(`STATUS: ${chalk.greenBright("OFFILE")}`);
+                  console.log(`STATUS: ${chalk.redBright(error)}`);
+                });
+
+              transport.sendMail({
+                from: '"🛍️ Facci Cursos" <faciiuleam2020@gmail.com>',
+                to: userStored.email,
+                subject: "activa tu usuario ",
+                text: " activa tu usuario",
+                html,
+              });
+              res.status(200).send({
+                message: `Usuario creado correctamente se a enviado un email al correo ${userStored.email} para su activacion`,
+              });
+            }
+          }
+        });
+      }
+    });
+  }
+}
+function getPerfil(req, resp) {
+  User.findById({ _id: req.params.id }, (err, Stored) => {
+    if (err) {
+      resp.status(500).send({ message: "Error de servidor" });
+    } else {
+      if (!Stored) {
+        resp.status(200).send({
+          code: 404,
+          message: "El usuario aun no se encuentra activo",
+        });
+      } else {
+        resp.status(200).send({ Stored });
+      }
+    }
+  });
+}
+
 module.exports = {
   register,
   login,
@@ -571,4 +763,7 @@ module.exports = {
   deleteUser,
   registerAdmin,
   verificarActivarUsuario,
+  inquietudes,
+  registerEstudiante,
+  getPerfil,
 };

@@ -14,7 +14,7 @@ const UserSchema = Schema({
   birthday: String,
   role: String,
   active: Boolean,
-  avatar: String
+  avatar: String,
 });
 
 UserSchema.plugin(mongoosePaginate);

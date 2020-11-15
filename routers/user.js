@@ -31,4 +31,7 @@ api.post(
 );
 
 api.put("/activar-verificar-usuario", UserController.verificarActivarUsuario);
+api.post("/inquietudes", [md_auth.ensureAuth], UserController.inquietudes);
+api.post("/register-estudiante", UserController.registerEstudiante);
+api.get("/get-perfil/:id", UserController.getPerfil);
 module.exports = api;
